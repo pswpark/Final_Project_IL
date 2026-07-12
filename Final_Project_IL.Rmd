@@ -1,0 +1,297 @@
+---
+title: "Final_Project_IL"
+author: "PP"
+date: "2026-07-09"
+output: 
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction 
+
+## Overview
+The purpose of this project is to develop a movie recommendation system for individual users, akin to Netflix challenge and seen in Harvard Course 8 Machine Learning. 
+
+Main method is based on machine learning based on the data made available by subset of Movielens, called edx. Key concepts shown in the course are explored which include movie recommendation system purely based on average rating and  5 features which are available through edx. The 5 features include "userId", "movieId", time data, "title" and "genres". Finally, this project will measure the final outcome in the form of residual mean squared error (RMSE). 
+
+The assignment specifies the RMSE value of <0.86490 as full score worthy goal and this project shows how this could be achieved using 4 out of the 5 features. 
+
+The English (Australian) style was used throughout this documentation given author's geographic background. 
+
+# Method 
+
+## Data cleaning 
+Tidy data has been already provided by Edx team and this step was not required. 
+
+## Data analysis preparation
+
+### library loading 
+```{r}
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+
+#Main library loading 
+library(tidyverse)
+library(caret)
+library(dplyr)
+library(ggplot2)
+library(dslabs)
+library(lubridate)
+
+```
+
+
+### Data download from Kaggle 
+```{r}
+# https://www.kaggle.com/uciml/indian-liver-patient-records
+# "uciml/indian-liver-patient-records"
+# For simplicity, please download zip file and load as following:
+
+liver_data <- read.csv("indian_liver_patient.csv")
+```
+
+### Basic data exploration 
+This identifies that Dataset column contains integers, instead of factors, which would be more useful given categorisation task. 
+```{r}
+names(liver_data) #note "Dataset": field used to split the data into two sets (patient with liver disease, or no disease)
+str(liver_data)
+
+head(liver_data)
+
+# Factorisation and creation of disease column instead of Dataset
+liver_data <- liver_data %>% 
+  mutate(Disease = as.factor(Dataset),
+         Gender = as.factor(Gender)) %>% 
+  select(-Dataset)
+```
+
+### Exploration on NA values 
+There are 4 NA values in the albumin-globulin ratio column. The impact of NA are likely to be minimal. 
+```{r}
+summary(liver_data)
+sum(is.na(liver_data)) 
+colSums(is.na(liver_data)) # 4 NA values  in AGRatio column 
+
+which(is.na(liver_data), arr.ind = TRUE) #row numbers 
+
+liver_data[c(210,242,254,313),] #the NA rows visualised with other variables
+```
+
+### Creation of final holdout set and separate train/test sets afterwards
+```{r}
+# Final hold-out test set will be 15% of the total data based on Disease column 
+set.seed(1, sample.kind="Rounding") 
+test_index <- createDataPartition(y = liver_data$Disease, times = 1, p = 0.15, list = FALSE)
+liv <- liver_data[-test_index,]
+final_holdout_test <- liver_data[test_index,]
+
+# Splitting of train/test sets with 15% in the test set 
+
+set.seed(1, sample.kind="Rounding") 
+test_index <- createDataPartition(y = liv$Disease, times = 1, p = 0.15, list = FALSE) #note the data is from liv, not liver_data
+train_set <- liv[-test_index,]
+test_set <- liv[test_index,]
+
+# table summary of datasets we have created: 
+datasets <- list(liver_data, liv, train_set, test_set, final_holdout_test)
+
+dim_table <- data.frame(
+  Dataset = c("liver_data", "liv", "train_set", "test_set", "final_holdout_test"),
+  do.call(rbind, lapply(datasets, dim))
+)
+
+names(dim_table)[2:3] <- c("Rows", "Columns")
+
+dim_table
+```
+
+### Further data exploration using visualisation   
+
+#### Age 
+Older the higher the chance of having the disease but no disease group has wider range thaan the disease group. 
+
+```{r, include=FALSE}
+train_set %>% slice(1:30)
+summary(train_set)
+str(train_set)
+names(train_set)
+```
+
+```{r}
+train_set %>% 
+  ggplot(aes(Age, fill=Disease)) + geom_density(alpha=0.4) + 
+  labs(
+    x = "Age",
+    y = "Density",
+    title = "Age Distribution by Disease Status"
+  )
+
+train_set %>% 
+  ggplot(aes(Age, fill=Disease)) + geom_boxplot(alpha=0.4) + 
+  labs(
+    x = "Age",
+    y = "Density",
+    title = "Age Distribution by Disease Status (Boxplot)"
+  )
+```
+#### Gender 
+More males 74% over females 63% with disease. 
+Similar to Age, it would be useful but there is overlap. 
+```{r}
+#Gender and its relationship to Disease
+
+train_set %>%
+  count(Gender, Disease) %>%
+  group_by(Gender) %>%
+  mutate(prop = n / sum(n))
+
+```
+#### Bili
+Both total and direct (which is total-indirect bilirubin) appear to be the best discriminator thus far.
+Lower the bili, less likely to have disease 
+```{r}
+
+train_set %>% 
+  ggplot(aes(Total_Bilirubin, fill=Disease)) + geom_boxplot(alpha=0.4) + 
+  scale_x_log10() + 
+  labs(
+    x = "Total_Bilirubin",
+    y = "Density",
+    title = "Total_Bilirubin Distribution by Disease Status (Boxplot, log)"
+  )
+
+train_set %>% 
+  ggplot(aes(Direct_Bilirubin, fill=Disease)) + geom_boxplot(alpha=0.4) + 
+  scale_x_log10() + 
+  labs(
+    x = "Direct_Bilirubin",
+    y = "Density",
+    title = "Direct_Bilirubin Distribution by Disease Status (Boxplot,log)"
+  )
+
+```
+
+#### Liver enzymes (ALP, ALT, AST)
+```{r}
+#ALP - cholestasis
+train_set %>% 
+  ggplot(aes(Alkaline_Phosphotase, fill=Disease)) + geom_boxplot(alpha=0.4) + 
+  scale_x_log10() + 
+  labs(
+    x = "Alkaline_Phosphotase",
+    y = "Density",
+    title = "Alkaline_Phosphotase Distribution by Disease Status (Boxplot, Log)"
+  )
+
+#ALT - hepatocellular 
+train_set %>% 
+  ggplot(aes(Alamine_Aminotransferase, fill=Disease)) + geom_boxplot(alpha=0.4) + 
+  scale_x_log10() + 
+  labs(
+    x = "Alamine_Aminotransferase",
+    y = "Density",
+    title = "Alamine_Aminotransferase Distribution by Disease Status (Boxplot, Log)"
+  )
+#AST- hepatocellular
+train_set %>% 
+  ggplot(aes(Aspartate_Aminotransferase, fill=Disease)) + geom_boxplot(alpha=0.4) + 
+  scale_x_log10() + 
+  labs(
+    x = "Aspartate_Aminotransferase",
+    y = "Density",
+    title = "Aspartate_Aminotransferase Distribution by Disease Status (Boxplot, Log)"
+  )
+
+```
+#### Protein related 
+This reflects synthetic function of the liver. 
+Total protein did not demonstrate a good discriminating power. 
+Albumin and AGR reductions were noted in the disease group. 
+
+```{r}
+#Total protein 
+train_set %>% 
+  ggplot(aes(Total_Protiens, fill=Disease)) + geom_boxplot(alpha=0.4) + 
+  labs(
+    x = "Total_Protiens",
+    y = "Density",
+    title = "Total_Protiens Distribution by Disease Status (Boxplot)"
+  )
+
+# Albumin 
+train_set %>% 
+  ggplot(aes(Albumin, fill=Disease)) + geom_boxplot(alpha=0.4) + 
+  labs(
+    x = "Total_Protiens",
+    y = "Density",
+    title = "Total_Protiens Distribution by Disease Status (Boxplot)"
+  )
+
+# Albumin_and_Globulin_Ratio
+train_set %>% 
+  ggplot(aes(Albumin_and_Globulin_Ratio, fill=Disease)) + geom_boxplot(alpha=0.4) + 
+  labs(
+    x = "Albumin_and_Globulin_Ratio",
+    y = "Density",
+    title = "Albumin_and_Globulin_Ratio Distribution by Disease Status (Boxplot)"
+  )
+```
+
+# Results 
+
+## 
+
+```{r}
+#removes NA values instead of imputing the given that there are minimal NA values. 
+train_set <- na.omit(train_set)  
+test_set <- na.omit(test_set)
+
+# preliminary glm and knn testing 
+train_glm <- train(Disease ~ ., method = "glm", data = train_set)
+train_knn <- train(Disease ~ ., method = "knn", data = train_set)
+
+y_hat_glm <- predict(train_glm, test_set, type = "raw")
+y_hat_knn <- predict(train_knn, test_set, type = "raw")
+
+confusionMatrix(y_hat_glm, test_set$Disease)$overall[["Accuracy"]]
+confusionMatrix(y_hat_knn, test_set$Disease)$overall[["Accuracy"]]
+
+# knn tuning 
+ggplot(train_knn, highlight = TRUE) #5-9 has been performed which achieves 0.6849315
+
+train_knn <- train(Disease ~ ., method = "knn",
+                   data = train_set,
+                   tuneGrid = data.frame(k = seq(9, 71, 2)))
+
+ggplot(train_knn, highlight = TRUE)
+
+train_knn$bestTune #k=69	
+train_knn$finalModel
+
+```
+
+
+
+
+# Conclusion 
+This project used RMSE as a measure of the loss function to see the impact of 4 out of 5 available features in edx data set. Using machine learning techniques, we were able to build movie recommendation system which can achieve RMSE of 0.8648418 stars. Although not perfect, the margin of error is within 1 star. 
+
+One major limitation is that more advanced machine learning techniques were not used in this instance. Partly this was due to limited time avaibility and the fact that Netflix team's winning RMSE of 0.8660 following extensive and advanced analysis using the Netflix data was slightly higher than the RMSE achieved with basic analysis performed in this project. Future projects could look at further use of advanced analysis on edx dataset. 
+
+In summary, use of basic machine learning methods achieved RMSE of 0.8648418 stars for edx dataset. 
+
+
+# References 
+
+1. The backbone of the analysis was based on Prof Rafael A. Irizarry, available in the text book chapter 33 at https://rafalab.dfci.harvard.edu/dsbook/
+
+2. Netflix challenge paper with a more detailed explanation was reviewed and available here: https://www2.seas.gwu.edu/~simhaweb/champalg/cf/papers/KorenBellKor2009.pdf
+
+3. Large language model, ChatGPT, was used for checking for coding errors. 
+
