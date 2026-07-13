@@ -1,36 +1,6 @@
----
-title: "Final_Project_IL"
-author: "PP"
-date: "2026-07-09"
-output: 
-  pdf_document:
-    toc: true
-    toc_depth: 3
-    number_sections: true
----
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-# Introduction 
-
-## Overview
-Liver disease is 11th leading cause of death in Australia, and account for 2 million deaths per annum world-wide, which is 4% of all deaths.(1,2) This highlights the importance of easy, accessible and scalable detection for those at risk. Liver disease can be divided into cholestatic and hepatocellular disorders - one that is caused by obstruction and the other by direct damage to the liver.(1) Currently liver function test (LFT) based on blood test is used in routine clinical practice to detect liver disease. 
-
-The purpose of this project is to develop a liver disease prediction models based on a dataset which contains 416 liver patient records and 167 non liver patient records collected from North East of Andhra Pradesh, India. This data has been made publicly available via Kaggle (more information is available below in Methods). Main method is based on machine learning techniques such as linear regression, gamLoess, KNN and random forest. Ensemble method has also been trialed. 
-
-The English (Australian) style was used throughout this documentation given author's geographic background. 
-
-# Method 
-
-## Data cleaning 
-Tidy data has been already provided and this step was not required. 
-
 ## Data analysis preparation
 
 ### library loading 
-```{r, echo=FALSE}
 if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
 if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
 
@@ -42,25 +12,11 @@ library(ggplot2)
 library(dslabs)
 library(lubridate)
 
-```
-
-
 ### Data download from Git/Kaggle 
-Original data can be accessed via https://www.kaggle.com/uciml/indian-liver-patient-records.
-To assist with code access without Kaggle account, I have uploaded the dataset onto my Github account for easier access. 
-```{r}
 url <- "https://raw.githubusercontent.com/pswpark/Final_Project_IL/main/indian_liver_patient.csv"
-
 liver_data <- read.csv(url)
-```
 
-### Basic data exploration 
-This identifies that Dataset column contains integers, instead of factors, which would be more useful given categorisation task. 
-```{r, echo=TRUE, results='hide'}
-names(liver_data) #note "Dataset": field used to split the data into two sets (patient with liver disease, or no disease)
-str(liver_data)
-
-head(liver_data)
+### Data preparation
 
 # Factorisation and creation of disease column instead of Dataset
 liver_data <- liver_data %>% 
@@ -75,26 +31,9 @@ liver_data$Disease <- factor(
   labels = c("Yes", "No")
 )
 
-levels(liver_data$Disease) #correct assignment of 1 and 2. 
-
-```
-
-### Exploration on NA values 
-There are 4 NA values in the albumin-globulin ratio column. The impact of NA are likely to be minimal. 
-```{r, echo=TRUE, results='hide'}
-summary(liver_data)
-sum(is.na(liver_data)) 
-colSums(is.na(liver_data)) # 4 NA values  in AGRatio column 
-
-which(is.na(liver_data), arr.ind = TRUE) #row numbers
-```
-
-```{r}
-liver_data[c(210,242,254,313),] #the NA rows visualised with other variables
-```
 
 ### Creation of final holdout set and separate train/test sets afterwards
-```{r, echo=TRUE, results='hide'}
+
 # Final hold-out test set will be 15% of the total data based on Disease column 
 set.seed(1, sample.kind="Rounding") 
 test_index <- createDataPartition(y = liver_data$Disease, times = 1, p = 0.15, list = FALSE)
@@ -108,48 +47,9 @@ test_index <- createDataPartition(y = liv$Disease, times = 1, p = 0.15, list = F
 train_set <- liv[-test_index,]
 test_set <- liv[test_index,]
 
-# table summary of datasets we have created: 
-datasets <- list(liver_data, liv, train_set, test_set, final_holdout_test)
-
-dim_table <- data.frame(
-  Dataset = c("liver_data", "liv", "train_set", "test_set", "final_holdout_test"),
-  do.call(rbind, lapply(datasets, dim))
-)
-
-names(dim_table)[2:3] <- c("Rows", "Columns")
-```
-
-```{r}
-dim_table
-```
-
-### Further data exploration using visualisation   
-
-#### Disease proportion 
-
-```{r, include=FALSE}
-train_set %>% slice(1:30)
-summary(train_set)
-str(train_set)
-names(train_set)
-```
-Proportion of those with Disease (ie =1) in the dataset is imbalanced - there are more cases with Disease than those without. 
-```{r}
-mean(train_set$Disease=="Yes")
-```
+### Further data exploration using visualisation 
 
 #### Age 
-
-Older the higher the chance of having the disease but no disease group has wider range thaan the disease group. 
-
-```{r, echo=FALSE}
-train_set %>% 
-  ggplot(aes(Age, fill=Disease)) + geom_density(alpha=0.4) + 
-  labs(
-    x = "Age",
-    y = "Density",
-    title = "Age Distribution by Disease Status"
-  )
 
 train_set %>% 
   ggplot(aes(Age, fill=Disease)) + geom_boxplot(alpha=0.4) + 
@@ -158,13 +58,9 @@ train_set %>%
     y = "Density",
     title = "Age Distribution by Disease Status (Boxplot)"
   )
-```
+
 #### Gender 
 
-More males 74% over females 63% with disease. 
-Similar to Age, it would be useful but there is overlap. 
-
-```{r}
 #Gender and its relationship to Disease
 
 train_set %>%
@@ -172,13 +68,7 @@ train_set %>%
   group_by(Gender) %>%
   mutate(prop = n / sum(n))
 
-```
 #### Bilirubins 
-
-Both total and direct (which is total-indirect bilirubin) appear to be the best discriminator thus far.
-Lower the bili, less likely to have disease 
-
-```{r, echo=FALSE}
 
 train_set %>% 
   ggplot(aes(Total_Bilirubin, fill=Disease)) + geom_boxplot(alpha=0.4) + 
@@ -198,13 +88,8 @@ train_set %>%
     title = "Direct_Bilirubin Distribution by Disease Status (Boxplot,log)"
   )
 
-```
+#### Other factors 
 
-#### Liver enzymes (ALP, ALT, AST)
-
-All the enzymes show that higher the levels, higher the chance of having the Disease. 
-
-```{r, echo=FALSE}
 #ALP - cholestasis
 train_set %>% 
   ggplot(aes(Alkaline_Phosphotase, fill=Disease)) + geom_boxplot(alpha=0.4) + 
@@ -234,12 +119,6 @@ train_set %>%
     title = "Aspartate_Aminotransferase Distribution by Disease Status (Boxplot, Log)"
   )
 
-```
-#### Protein related 
-
-This reflects synthetic function of the liver. Total protein out of the other 2 protein markers (Albumin and Albumin Globulin ratio (AGR)) related features demonstrated best median difference. 
-
-```{r, echo=FALSE}
 #Total protein 
 train_set %>% 
   ggplot(aes(Total_Protiens, fill=Disease)) + geom_boxplot(alpha=0.4) + 
@@ -266,28 +145,14 @@ train_set %>%
     y = "Density",
     title = "Albumin_and_Globulin_Ratio Distribution by Disease Status (Boxplot)"
   )
-```
-### Summary of Exploration 
-
-Above exploration shows that 
-1. Bilirubin and liver enzyme results likely carry the most weight in terms of prediction. 
-
-2. In the train data set, those with Disease was 'r 299/(299+118)*100'% (299 cases). This means there is imbalance of data used for binary categorisation. This would favour use of balanced accuracy over standard accuracy. Additionally, F1 score metric may be useful given that positive cases are important aspects of this machine learning tasks. 
-
-3. There are only 4 NA values in this dataset, in Albumin-Globulin ratio which overlaps with one another significantly. 
-
-# Results 
 
 ## Handling of NA 
-Decision to remove 4 NA values within Albumin-Globulin Ratio instead of imputing the given that there are only 4 NA values.
-```{r}
 train_set <- na.omit(train_set)  
 test_set <- na.omit(test_set)
-```
+
 
 ## Model 1: logistic regression (glm)
 
-```{r, echo=TRUE, results='hide'}
 # train on train_set
 train_glm <- train(Disease ~ ., method = "glm", data = train_set)
 
@@ -297,50 +162,19 @@ y_hat_glm <- predict(train_glm, test_set, type = "raw")
 #metric calculation 
 cm_glm <- confusionMatrix(y_hat_glm, test_set$Disease)
 
-cm_glm$byClass[["Balanced Accuracy"]]
-cm_glm$byClass[["F1"]]
-cm_glm$overall[["Accuracy"]]
-
-```
 
 ## Model 2: KNN
-```{r, echo=TRUE, results='hide'}
-#similar to previous - train on train set and then test on test set 
-train_knn <- train(Disease ~ ., method = "knn", data = train_set)
-y_hat_knn <- predict(train_knn, test_set, type = "raw")
-cm_knn <- confusionMatrix(y_hat_knn, test_set$Disease)
-
-cm_knn$byClass[["Balanced Accuracy"]]
-cm_knn$byClass[["F1"]]
-cm_knn$overall[["Accuracy"]]
-
-# knn tuning on trainset - there are <500 observations, and hence decided to test up to 51 k values 
-ggplot(train_knn, highlight = TRUE) #5-9 has been performed which achieves 0.6849315
 
 train_knn <- train(Disease ~ ., method = "knn",
                    data = train_set,
                    tuneGrid = data.frame(k = seq(1, 51, 2)))
 
-ggplot(train_knn, highlight = TRUE)
-
-#best k=49
-train_knn$bestTune 
-train_knn$finalModel
-
-#test set 
 cm_knn <- confusionMatrix(data = predict(train_knn, test_set, type = "raw"), 
-                reference = test_set$Disease)
+                          reference = test_set$Disease)
 
-cm_knn$byClass[["Balanced Accuracy"]]
-cm_knn$byClass[["F1"]]
-cm_knn$overall[["Accuracy"]]
-
-
-```
 
 ## Model 3: gamLoess 
-As some features may be non-linear, trial of gamloess 
-```{r, echo=TRUE, warning=FALSE, message=FALSE}
+
 if(!require(gam)) install.packages("gam", repos = "http://cran.us.r-project.org")
 modelLookup("gamLoess")
 
@@ -354,11 +188,9 @@ train_control <- trainControl(
 
 #this will take about 30 seconds
 train_gam <- train(Disease ~ ., data = train_set, method = "gamLoess",
-  trControl = train_control,
-  tuneGrid = data.frame(span = seq(0.3, 1.0, by = 0.1), degree =1)
+                   trControl = train_control,
+                   tuneGrid = data.frame(span = seq(0.3, 1.0, by = 0.1), degree =1)
 )
-
-ggplot(train_gam, highlight = TRUE)
 
 #predict on test set based on train set
 y_hat_gam <- predict(train_gam, test_set)
@@ -366,24 +198,18 @@ y_hat_gam <- predict(train_gam, test_set)
 #metric calculation 
 cm_gam <- confusionMatrix(y_hat_gam, test_set$Disease)
 
-cm_gam$byClass[["Balanced Accuracy"]]
-cm_gam$byClass[["F1"]]
-cm_gam$overall[["Accuracy"]]
-
-```
 
 ## Model 4: Random Forest 
 
-```{r, echo=TRUE, results='hide'}
 if(!require(randomForest)) install.packages("randomForest", repos = "http://cran.us.r-project.org")
 
 #mtry values of c(2, 4, 6, 8) given about 10 features being assessed. 
 
 train_rf <- train(Disease ~ ., data = train_set,  method = "rf",
-  trControl = train_control, #train control = 10 fold validations previously defined 
-  tuneGrid = data.frame(
-    mtry = c(2, 4, 6, 8)
-  )
+                  trControl = train_control, #train control = 10 fold validations previously defined 
+                  tuneGrid = data.frame(
+                    mtry = c(2, 4, 6, 8)
+                  )
 )
 
 y_hat_rf <- predict(train_rf, test_set)
@@ -391,14 +217,7 @@ y_hat_rf <- predict(train_rf, test_set)
 #metric calculation 
 cm_rf <- confusionMatrix(y_hat_rf, test_set$Disease)
 
-cm_rf$byClass[["Balanced Accuracy"]]
-cm_rf$byClass[["F1"]]
-cm_rf$overall[["Accuracy"]]
-```
-
 ## Summary table of individual models 
-This shows that gamLoess achieves best balanced accuracy of 0.6423993 but random forest achieves best F1 value of 0.8521739.  
-```{r, echo=TRUE, results='hide'}
 
 results <- data.frame(
   Model = c("Logistic Regression", "KNN", "gamLoess", "Random Forest"),
@@ -441,10 +260,10 @@ results <- data.frame(
 )
 
 results
-```
+
+
 ## Ensemble with stacked models  
 
-```{r, echo=TRUE, warning=FALSE, message=FALSE}
 # Use caretEnsemble package 
 if(!require(caretEnsemble)) install.packages("caretEnsemble", repos = "http://cran.us.r-project.org")
 
@@ -511,25 +330,19 @@ cm_ensemble <- confusionMatrix(
 cm_ensemble
 
 results <- bind_rows(results,
-                          tibble(Model = "Ensemble of 4 Models", 
-                                 Precision = cm_ensemble$byClass["Pos Pred Value"],
-                                 Recall = cm_ensemble$byClass["Sensitivity"],
-                                 Specificity = cm_ensemble$byClass["Specificity"],
-                                 F1 = cm_ensemble$byClass["F1"],
-                                 Balanced_Accuracy = cm_ensemble$byClass["Balanced Accuracy"],
-                                 Accuracy = cm_ensemble$overall["Accuracy"]))
+                     tibble(Model = "Ensemble of 4 Models", 
+                            Precision = cm_ensemble$byClass["Pos Pred Value"],
+                            Recall = cm_ensemble$byClass["Sensitivity"],
+                            Specificity = cm_ensemble$byClass["Specificity"],
+                            F1 = cm_ensemble$byClass["F1"],
+                            Balanced_Accuracy = cm_ensemble$byClass["Balanced Accuracy"],
+                            Accuracy = cm_ensemble$overall["Accuracy"]))
 
 results 
-```
-Across the models, the precision and recall rates were high (0.75 to 0.95) with a low specificty rates, mostly in 0.30-0.38 range. Ensemble's sepcificty rate was highest at 0.42, which translated to the best balanced accuracy. 
 
-F1 score was highest for Random forest, thanks to its highest recall and third highest precision rate. 
-
-It appears that ensemble achieves the best metric outcome for precision, specificity and all balanced accuracy. Random forest followed closely and achieves best recall, but lower specificity with lower balanced accuracy. gamLoess had the second highest balanced accuracy with comparable recall to ensemble but lower specificty. 
 
 ## Test on final hold out set 
-These models were then tested on the final hold out set as below.  
-```{r, echo=TRUE, warning=FALSE, message=FALSE}
+
 # glm 
 y_hat_glm_2 <- predict(train_glm, final_holdout_test, type = "raw")
 cm_glm_2 <- confusionMatrix(y_hat_glm_2, final_holdout_test$Disease)
@@ -538,7 +351,7 @@ cm_glm_2
 
 # knn
 cm_knn_2 <- confusionMatrix(data = predict(train_knn, final_holdout_test, type = "raw"), 
-                reference = final_holdout_test$Disease)
+                            reference = final_holdout_test$Disease)
 # gamLoess
 y_hat_gam_2 <- predict(train_gam, final_holdout_test)
 cm_gam_2 <- confusionMatrix(y_hat_gam_2, final_holdout_test$Disease)
@@ -616,20 +429,4 @@ results_2 <- data.frame(
   )
 )
 
-results_2
-```
-The result shows that the models overall have high precision and recall, resulting in high F1 scores. However due to low specificity between 10-20%, this results in low balanced accuracy rating. Random forest had highest precision, specificity and second highest recall, placing it at the highest balanced accuracy of 0.560. 
-
-# Conclusion 
-This project tested machine learning algorithms on Indian Liver Disease database to come up with cateogorisation algorithm. Using machine learning techniques, we were able to identify that random forest model achieved overall best metric. This was closely followed by logistic regression, gamLoess, and the Ensemble of the 4 models.  Future work could look into trial of other machine learning techniques including receiver operating curve. 
-
-In summary, use of machine learning methods achieved categorisation algorithms with high recall (sensitivity) but with low specificity. This means that the test rules out when the test is negative (high sensitivity) but the converse is not true - that is when the test is positive, it is not able to rule in the disease. This would mean that the test is potentially suitable for screening for a large population, and further work is needed to develop better test which can confirm the disease in those who test positive on this test (given its low specificity).  
-
-# References 
-
-1. Friedman LS. Approach to the patient with abnormal liver tests. UpToDate. 2026.
-
-2. Devarbhavi H, Asrani SK, Arab JP, Nartey YA, Pose E, Kamath PS.  Global burden of liver disease: 2023 update. J Hepatol. 2023 Aug;79(2):516-537. doi: 10.1016/j.jhep.2023.03.017. Epub 2023 Mar 27.
-
-3. Large language model, ChatGPT, was used for checking for coding errors. 
-
+print(results_2)
